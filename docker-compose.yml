@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mailer:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - PYTHON_CMD=python
+      - NODE_ENV=production
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mailer-network
+
+networks:
+  mailer-network:
+    driver: bridge
