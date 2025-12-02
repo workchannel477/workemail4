@@ -1,0 +1,321 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Email Control Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen">
+    <div class="max-w-6xl mx-auto px-4 py-10" x-data="dashboardApp()" x-init="init()">
+      <header class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 class="text-3xl font-semibold text-slate-800">Email Job Dashboard</h1>
+          <p class="text-slate-500">Authenticate, manage outbound jobs, and trigger the sender.</p>
+        </div>
+      </header>
+
+      <template x-if="!token">
+        <section class="bg-white shadow rounded-lg p-6 w-full max-w-lg">
+          <h2 class="text-xl font-medium text-slate-700 mb-4">Log in</h2>
+          <form @submit.prevent="login" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-600">Username</label>
+              <input type="text" x-model.trim="loginForm.username" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-600">Password</label>
+              <input type="password" x-model.trim="loginForm.password" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required />
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded" x-bind:disabled="busy">
+              <span x-show="!busy">Sign in</span>
+              <span x-show="busy">Authenticating...</span>
+            </button>
+            <p class="text-sm text-red-600" x-text="error" x-show="error"></p>
+          </form>
+        </section>
+      </template>
+
+      <template x-if="token">
+        <div class="space-y-8">
+          <div class="bg-white shadow rounded-lg p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p class="text-slate-600">Signed in as <span class="font-semibold" x-text="user?.username"></span></p>
+              <p class="text-sm text-slate-500">Role: <span class="font-semibold capitalize" x-text="user?.role"></span></p>
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              <button class="px-4 py-2 rounded border border-indigo-500 text-indigo-600" @click="refreshProfile" x-bind:disabled="busy">Refresh profile</button>
+              <button class="px-4 py-2 rounded bg-rose-500 text-white" @click="logout">Logout</button>
+            </div>
+          </div>
+
+          <section class="bg-white shadow rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-semibold text-slate-700">Create email job</h2>
+              <span class="text-sm text-slate-400" x-show="busy">Working...</span>
+            </div>
+            <form class="grid gap-4" @submit.prevent="createJob">
+              <div>
+                <label class="block text-sm font-medium text-slate-600">Subject</label>
+                <input type="text" x-model.trim="form.subject" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600">Recipients</label>
+                <textarea rows="2" x-model="form.recipients" placeholder="one@example.com, two@example.com" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required></textarea>
+              </div>
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-600">Plain text body</label>
+                  <textarea rows="4" x-model="form.textBody" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200"></textarea>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-600">HTML body</label>
+                  <textarea rows="4" x-model="form.htmlBody" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200"></textarea>
+                </div>
+              </div>
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-slate-600">SMTP username</label>
+                  <input type="text" x-model.trim="form.smtpUsername" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-600">SMTP password / app password</label>
+                  <input type="password" x-model.trim="form.smtpPassword" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200" required />
+                </div>
+              </div>
+              <button type="submit" class="self-start bg-indigo-600 text-white font-medium px-6 py-2 rounded hover:bg-indigo-500" x-bind:disabled="busy">
+                Save job
+              </button>
+              <p class="text-sm text-green-600" x-text="message" x-show="message"></p>
+              <p class="text-sm text-red-600" x-text="error" x-show="error"></p>
+            </form>
+          </section>
+
+          <section class="bg-white shadow rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-semibold text-slate-700">Existing jobs</h2>
+              <button class="text-sm text-indigo-600" @click="fetchJobs">Reload</button>
+            </div>
+            <template x-if="!jobs.length">
+              <p class="text-slate-500">No jobs yet. Submit the form above to create one.</p>
+            </template>
+            <div class="overflow-x-auto" x-show="jobs.length">
+              <table class="min-w-full text-sm">
+                <thead>
+                  <tr class="text-left text-slate-500 border-b">
+                    <th class="py-2 pr-4">Subject</th>
+                    <th class="py-2 pr-4">Recipients</th>
+                    <th class="py-2 pr-4">Owner</th>
+                    <th class="py-2 pr-4">Updated</th>
+                    <th class="py-2 pr-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="job in jobs" :key="job.id">
+                    <tr class="border-b last:border-b-0">
+                      <td class="py-2 pr-4 font-medium text-slate-700" x-text="job.subject"></td>
+                      <td class="py-2 pr-4 text-slate-500">
+                        <span x-text="job.recipients.join(', ')"></span>
+                      </td>
+                      <td class="py-2 pr-4 text-slate-500" x-text="job.owner"></td>
+                      <td class="py-2 pr-4 text-slate-500" x-text="formatDate(job.updatedAt)"></td>
+                      <td class="py-2 pr-4 flex gap-2 flex-wrap">
+                        <button class="px-3 py-1 bg-emerald-500 text-white rounded" @click="triggerSend(job.id)">Send</button>
+                        <button class="px-3 py-1 bg-rose-500 text-white rounded" @click="deleteJob(job.id)" x-show="!isAdmin">Delete</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="bg-white shadow rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-semibold text-slate-700">Stored mailboxes</h2>
+              <button class="text-sm text-indigo-600" @click="refreshProfile">Refresh</button>
+            </div>
+            <template x-if="!user?.mailboxes?.length">
+              <p class="text-slate-500">No SMTP accounts attached yet.</p>
+            </template>
+            <div class="grid gap-4 md:grid-cols-2" x-show="user?.mailboxes?.length">
+              <template x-for="box in user.mailboxes" :key="box.id">
+                <div class="border rounded-lg p-4">
+                  <p class="font-semibold" x-text="box.label"></p>
+                  <p class="text-sm text-slate-500" x-text="box.smtpUsername"></p>
+                  <p class="text-xs text-slate-400">Updated <span x-text="formatDate(box.updatedAt)"></span></p>
+                </div>
+              </template>
+            </div>
+          </section>
+        </div>
+      </template>
+    </div>
+
+    <script>
+      document.addEventListener('alpine:init', () => {
+        Alpine.data('dashboardApp', () => ({
+          token: localStorage.getItem('mailer_token') || '',
+          user: JSON.parse(localStorage.getItem('mailer_user') || 'null'),
+          jobs: [],
+          busy: false,
+          message: '',
+          error: '',
+          loginForm: { username: '', password: '' },
+          form: {
+            subject: '',
+            recipients: '',
+            textBody: '',
+            htmlBody: '',
+            smtpUsername: '',
+            smtpPassword: ''
+          },
+          init() {
+            if (this.token) {
+              this.fetchJobs();
+              this.refreshProfile();
+            }
+          },
+          get isAdmin() {
+            return this.user?.role === 'admin';
+          },
+          headers() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (this.token) headers.Authorization = `Bearer ${this.token}`;
+            return headers;
+          },
+          async login() {
+            this.error = '';
+            this.busy = true;
+            try {
+              const response = await fetch('/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.loginForm)
+              });
+              if (!response.ok) throw new Error('Invalid username or password');
+              const data = await response.json();
+              this.token = data.token;
+              this.user = { username: data.username, role: data.role, mailboxes: data.mailboxes || [] };
+              localStorage.setItem('mailer_token', this.token);
+              localStorage.setItem('mailer_user', JSON.stringify(this.user));
+              this.loginForm.password = '';
+              await this.fetchJobs();
+            } catch (error) {
+              this.error = error.message;
+            } finally {
+              this.busy = false;
+            }
+          },
+          async logout() {
+            if (this.token) {
+              try {
+                await fetch('/auth/logout', { method: 'POST', headers: this.headers() });
+              } catch (error) {
+                console.warn(error);
+              }
+            }
+            localStorage.removeItem('mailer_token');
+            localStorage.removeItem('mailer_user');
+            this.token = '';
+            this.user = null;
+            this.jobs = [];
+          },
+          async refreshProfile() {
+            if (!this.token) return;
+            try {
+              const response = await fetch('/auth/me', { headers: this.headers() });
+              if (!response.ok) throw new Error('Unable to fetch profile');
+              const data = await response.json();
+              this.user = data;
+              localStorage.setItem('mailer_user', JSON.stringify(data));
+            } catch (error) {
+              this.error = error.message;
+            }
+          },
+          async fetchJobs() {
+            if (!this.token) return;
+            this.error = '';
+            try {
+              const response = await fetch('/api/jobs', { headers: this.headers() });
+              if (!response.ok) throw new Error('Unable to load jobs');
+              this.jobs = await response.json();
+            } catch (error) {
+              this.error = error.message;
+            }
+          },
+          async createJob() {
+            this.error = '';
+            this.message = '';
+            if (!this.form.subject || !this.form.recipients || !this.form.smtpUsername || !this.form.smtpPassword) {
+              this.error = 'All required fields must be filled.';
+              return;
+            }
+            this.busy = true;
+            try {
+              const response = await fetch('/api/jobs', {
+                method: 'POST',
+                headers: this.headers(),
+                body: JSON.stringify(this.form)
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.message || 'Failed to create job');
+              Object.keys(this.form).forEach((key) => (this.form[key] = ''));
+              this.message = 'Job stored successfully.';
+              setTimeout(() => (this.message = ''), 4000);
+              await Promise.all([this.fetchJobs(), this.refreshProfile()]);
+            } catch (error) {
+              this.error = error.message;
+            } finally {
+              this.busy = false;
+            }
+          },
+          async triggerSend(id) {
+            if (!confirm('Trigger this job now?')) return;
+            try {
+              const response = await fetch(`/api/jobs/${id}/send`, {
+                method: 'POST',
+                headers: this.headers()
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.message || 'Failed to send job');
+              this.message = data.message;
+              setTimeout(() => (this.message = ''), 4000);
+              await this.fetchJobs();
+            } catch (error) {
+              this.error = error.message;
+            }
+          },
+          async deleteJob(id) {
+            if (!confirm('Delete this job?')) return;
+            try {
+              const response = await fetch(`/api/jobs/${id}`, {
+                method: 'DELETE',
+                headers: this.headers()
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.message || 'Failed to delete job');
+              this.message = data.message;
+              setTimeout(() => (this.message = ''), 4000);
+              await this.fetchJobs();
+            } catch (error) {
+              this.error = error.message;
+            }
+          },
+          formatDate(value) {
+            if (!value) return '—';
+            try {
+              return new Date(value).toLocaleString();
+            } catch (error) {
+              return value;
+            }
+          },
+          openAdmin() {
+            window.location.href = '/admin.html';
+          }
+        }));
+      });
+    </script>
+  </body>
+</html>
